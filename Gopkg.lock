@@ -26,6 +26,12 @@
   version = "v1.6.0"
 
 [[projects]]
+  branch = "master"
+  name = "github.com/nfnt/resize"
+  packages = ["."]
+  revision = "891127d8d1b52734debe1b3c3d7e747502b6c366"
+
+[[projects]]
   name = "github.com/pborman/uuid"
   packages = ["."]
   revision = "e790cca94e6cc75c7064b1332e63811d4aae1a53"
@@ -94,6 +100,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "4da2a3dcab5c9792f34491b7ab3ddc17921488ced82ce9ff97d7d39a7586cb9e"
+  inputs-digest = "eaf476fedf66acdec363b174f37e5b81a18a6a74698b207a64936211e75e268f"
   solver-name = "gps-cdcl"
   solver-version = 1
