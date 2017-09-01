@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"image"
 	"image/color"
@@ -21,10 +22,10 @@ import (
 	"github.com/nfnt/resize"
 )
 
-const url = "http://localhost:8545"
+const defaultUrl = "http://localhost:8545"
 
 //const contractAddr = "0xffb81a3a20e7fc1d44c3222a2b7a6d5705a7064b"
-const contractAddr = "0xb88404dd8fe4969ef67841250baef7f04f6b1a5e"
+const defaultContractAddr = "0xb88404dd8fe4969ef67841250baef7f04f6b1a5e"
 
 type Ad struct {
 	Idx       int    `json:"idx"`
@@ -65,17 +66,21 @@ func drawAd(img *image.RGBA, ad Ad) error {
 }
 
 func main() {
+	rpcUrl := flag.String("rpc", defaultUrl, "URL for Ethereum RPC client")
+	contractAddr := flag.String("address", defaultContractAddr, "Address of KetherHomepage contract")
+	flag.Parse()
+
 	bgColor := color.RGBA{221, 221, 221, 1}
 
 	adsImg := image.NewRGBA(image.Rect(0, 0, 1000, 1000))
 	draw.Draw(adsImg, adsImg.Bounds(), &image.Uniform{bgColor}, image.ZP, draw.Src)
 
-	conn, err := ethclient.Dial(url)
+	conn, err := ethclient.Dial(*rpcUrl)
 	if err != nil {
 		log.Fatalf("Failed to connect to the Ethereum client: %v", err)
 	}
 
-	contract, err := ketherhomepage.NewKetherHomepage(common.HexToAddress(contractAddr), conn)
+	contract, err := ketherhomepage.NewKetherHomepage(common.HexToAddress(*contractAddr), conn)
 	if err != nil {
 		log.Fatalf("Failed to instantiate a KetheHomepage contract: %v", err)
 	}
@@ -140,5 +145,5 @@ func main() {
 
 	pngF, _ := os.OpenFile("out.png", os.O_WRONLY|os.O_CREATE, 0600)
 	defer pngF.Close()
-	png.Encode(f, adsImg)
+	png.Encode(pngF, adsImg)
 }
