@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"cloud.google.com/go/storage"
 	"golang.org/x/net/context"
@@ -32,6 +33,8 @@ const defaultUrl = "http://localhost:8545"
 
 //const contractAddr = "0xffb81a3a20e7fc1d44c3222a2b7a6d5705a7064b"
 const defaultContractAddr = "0xb88404dd8fe4969ef67841250baef7f04f6b1a5e"
+
+const loopDuration = 10 * time.Minute
 
 const defaultBucket = "ketherhomepage"
 
@@ -169,70 +172,79 @@ func main() {
 		},
 	}
 
-	adsLength, err := session.GetAdsLength()
-	if err != nil {
-		log.Fatalf("Failed to call getAdsLength: %v", err)
-	}
+	tick := time.Tick(loopDuration)
 
-	// We can't have more than MaxInt ads by defintion.
-	length := int(adsLength.Int64())
-	ads := make([]Ad, length)
+	for {
+		log.Printf("Syncing with blockchain (%s) to %s/%s and %s/%s", settings.rpcUrl, settings.bucket, settings.jsonPath, settings.bucket, settings.pngPath)
 
-	for i := 0; i < length; i++ {
-		adData, err := session.Ads(big.NewInt(int64(i)))
+		adsLength, err := session.GetAdsLength()
 		if err != nil {
-			log.Fatalf("Failed to retrieve the ad: %v", err)
+			log.Fatalf("Failed to call getAdsLength: %v", err)
 		}
 
-		ad := Ad{
-			Idx:       i,
-			Owner:     adData.Owner.Hex(),
-			X:         int(adData.X.Int64()),
-			Y:         int(adData.Y.Int64()),
-			Width:     int(adData.Width.Int64()),
-			Height:    int(adData.Height.Int64()),
-			Link:      adData.Link,
-			Image:     adData.Image,
-			Title:     adData.Title,
-			UserNSFW:  adData.NSFW,
-			ForceNSFW: adData.ForceNSFW,
-		}
-		ads[i] = ad
+		// We can't have more than MaxInt ads by defintion.
+		length := int(adsLength.Int64())
+		ads := make([]Ad, length)
 
-		err = drawAd(adsImg, ad)
+		for i := 0; i < length; i++ {
+			adData, err := session.Ads(big.NewInt(int64(i)))
+			if err != nil {
+				log.Fatalf("Failed to retrieve the ad: %v", err)
+			}
+
+			ad := Ad{
+				Idx:       i,
+				Owner:     adData.Owner.Hex(),
+				X:         int(adData.X.Int64()),
+				Y:         int(adData.Y.Int64()),
+				Width:     int(adData.Width.Int64()),
+				Height:    int(adData.Height.Int64()),
+				Link:      adData.Link,
+				Image:     adData.Image,
+				Title:     adData.Title,
+				UserNSFW:  adData.NSFW,
+				ForceNSFW: adData.ForceNSFW,
+			}
+			ads[i] = ad
+
+			err = drawAd(adsImg, ad)
+			if err != nil {
+				// Don't fatal since we want to keep going
+				log.Printf("error drawing ad: %v", err)
+			}
+		}
+		json, err := json.Marshal(ads)
 		if err != nil {
-			// Don't fatal since we want to keep going
-			log.Printf("error drawing ad: %v", err)
+			log.Fatalf("Couldn't marshal ads to json: %v", err)
 		}
+
+		ctx := context.Background()
+
+		// Sets your Google Cloud Platform project ID.
+		//projectID := "389589326808"
+
+		// Creates a client.
+		client, err := storage.NewClient(ctx)
+		if err != nil {
+			log.Fatalf("Failed to create client: %v", err)
+		}
+
+		bucket := client.Bucket(settings.bucket)
+
+		jsonObj := bucket.Object(settings.jsonPath)
+		jsonW := jsonObj.NewWriter(ctx)
+		defer jsonW.Close()
+		jsonW.Write(json)
+
+		pngObj := bucket.Object(settings.pngPath)
+		pngW := pngObj.NewWriter(ctx)
+		defer pngW.Close()
+		png.Encode(pngW, adsImg)
+
+		// Set ACLs to public
+		jsonObj.ACL().Set(ctx, storage.AllUsers, storage.RoleReader)
+
+		// Loop every hour
+		<-tick
 	}
-	json, err := json.Marshal(ads)
-	if err != nil {
-		log.Fatalf("Couldn't marshal ads to json: %v", err)
-	}
-
-	ctx := context.Background()
-
-	// Sets your Google Cloud Platform project ID.
-	//projectID := "389589326808"
-
-	// Creates a client.
-	client, err := storage.NewClient(ctx)
-	if err != nil {
-		log.Fatalf("Failed to create client: %v", err)
-	}
-
-	bucket := client.Bucket(settings.bucket)
-
-	jsonObj := bucket.Object(settings.jsonPath)
-	jsonW := jsonObj.NewWriter(ctx)
-	defer jsonW.Close()
-	jsonW.Write(json)
-
-	pngObj := bucket.Object(settings.pngPath)
-	pngW := pngObj.NewWriter(ctx)
-	defer pngW.Close()
-	png.Encode(pngW, adsImg)
-
-	// Set ACLs to public
-	jsonObj.ACL().Set(ctx, storage.AllUsers, storage.RoleReader)
 }
