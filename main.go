@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -13,7 +15,11 @@ import (
 	"log"
 	"math/big"
 	"net/http"
-	"os"
+	"net/url"
+	"strings"
+
+	"cloud.google.com/go/storage"
+	"golang.org/x/net/context"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -26,6 +32,16 @@ const defaultUrl = "http://localhost:8545"
 
 //const contractAddr = "0xffb81a3a20e7fc1d44c3222a2b7a6d5705a7064b"
 const defaultContractAddr = "0xb88404dd8fe4969ef67841250baef7f04f6b1a5e"
+
+const defaultBucket = "ketherhomepage"
+
+type settings struct {
+	rpcUrl       string
+	contractAddr string
+	bucket       string
+	jsonPath     string
+	pngPath      string
+}
 
 type Ad struct {
 	Idx       int    `json:"idx"`
@@ -41,46 +57,101 @@ type Ad struct {
 	ForceNSFW bool   `json:"forceNSFW"`
 }
 
+func getImage(imageUrl string) (image.Image, error) {
+	u, err := url.Parse(imageUrl)
+	if err != nil {
+		return nil, err
+	}
+	if u.Scheme == "http" || u.Scheme == "https" {
+		resp, err := http.Get(imageUrl)
+		if err != nil {
+			return nil, err
+		}
+
+		adImage, _, err := image.Decode(resp.Body)
+		return adImage, err
+
+	} else if u.Scheme == "data" {
+		// This is not a fully compliant way of parsing data:// urls, assumes
+		// they are base64 encoded. Should work for now though
+		imgData, err := base64.StdEncoding.DecodeString(strings.Split(u.Opaque, ",")[1])
+		if err != nil {
+			return nil, err
+		}
+
+		adImage, _, err := image.Decode(bytes.NewReader(imgData))
+		return adImage, err
+	} else {
+		return nil, fmt.Errorf("Couldn't parse image URL: %s", imageUrl)
+	}
+}
+
 func drawAd(img *image.RGBA, ad Ad) error {
+	cellWidth := 10
+	x := ad.X * cellWidth
+	y := ad.Y * cellWidth
+	width := ad.Width * cellWidth
+	height := ad.Height * cellWidth
 	// First we draw the ad as a black rectangle to indicate it's bought
-	adBounds := image.Rect(ad.X, ad.Y, ad.X+ad.Width, ad.Y+ad.Height)
+	adBounds := image.Rect(x, y, x+width, y+height)
 
 	draw.Draw(img, adBounds, &image.Uniform{color.Black}, image.ZP, draw.Src)
-	fmt.Println(adBounds)
-	if ad.Image == "" {
-		// No ad, skip
+	if ad.Image == "" || ad.UserNSFW || ad.ForceNSFW {
+		// No ad or NSFW, skip
 		return nil
 	}
-	resp, err := http.Get(ad.Image)
+
+	adImage, err := getImage(ad.Image)
 	if err != nil {
 		return err
 	}
-	adImg, _, err := image.Decode(resp.Body)
-	if err != nil {
-		return err
-	}
-	scaledAdImg := resize.Resize(uint(ad.Width), uint(ad.Height), adImg, resize.Lanczos3)
+
+	scaledAdImg := resize.Resize(uint(width), uint(height), adImage, resize.Lanczos3)
 
 	draw.Draw(img, adBounds, scaledAdImg, image.ZP, draw.Src)
 	return nil
 }
 
-func main() {
+func processFlags() settings {
 	rpcUrl := flag.String("rpc", defaultUrl, "URL for Ethereum RPC client")
 	contractAddr := flag.String("address", defaultContractAddr, "Address of KetherHomepage contract")
+	bucket := flag.String("bucket", defaultBucket, "Bucket to upload into")
+	jsonPath := flag.String("jsonPath", "", "Path to write JSON to")
+	pngPath := flag.String("pngPath", "", "Path to write PNG file to")
+
 	flag.Parse()
 
+	// Bail if we don't get required paramters
+	if *jsonPath == "" {
+		log.Fatal("JSON path required")
+	}
+	if *pngPath == "" {
+		log.Fatal("PNG path required")
+	}
+
+	return settings{
+		rpcUrl:       *rpcUrl,
+		contractAddr: *contractAddr,
+		bucket:       *bucket,
+		jsonPath:     *jsonPath,
+		pngPath:      *pngPath,
+	}
+
+}
+
+func main() {
+	settings := processFlags()
 	bgColor := color.RGBA{221, 221, 221, 1}
 
 	adsImg := image.NewRGBA(image.Rect(0, 0, 1000, 1000))
 	draw.Draw(adsImg, adsImg.Bounds(), &image.Uniform{bgColor}, image.ZP, draw.Src)
 
-	conn, err := ethclient.Dial(*rpcUrl)
+	conn, err := ethclient.Dial(settings.rpcUrl)
 	if err != nil {
 		log.Fatalf("Failed to connect to the Ethereum client: %v", err)
 	}
 
-	contract, err := ketherhomepage.NewKetherHomepage(common.HexToAddress(*contractAddr), conn)
+	contract, err := ketherhomepage.NewKetherHomepage(common.HexToAddress(settings.contractAddr), conn)
 	if err != nil {
 		log.Fatalf("Failed to instantiate a KetheHomepage contract: %v", err)
 	}
@@ -108,7 +179,7 @@ func main() {
 	ads := make([]Ad, length)
 
 	for i := 0; i < length; i++ {
-		adData, err := session.Ads(big.NewInt(0))
+		adData, err := session.Ads(big.NewInt(int64(i)))
 		if err != nil {
 			log.Fatalf("Failed to retrieve the ad: %v", err)
 		}
@@ -139,11 +210,29 @@ func main() {
 		log.Fatalf("Couldn't marshal ads to json: %v", err)
 	}
 
-	jsonF, _ := os.OpenFile("out.json", os.O_WRONLY|os.O_CREATE, 0600)
-	defer jsonF.Close()
-	jsonF.Write(json)
+	ctx := context.Background()
 
-	pngF, _ := os.OpenFile("out.png", os.O_WRONLY|os.O_CREATE, 0600)
-	defer pngF.Close()
-	png.Encode(pngF, adsImg)
+	// Sets your Google Cloud Platform project ID.
+	//projectID := "389589326808"
+
+	// Creates a client.
+	client, err := storage.NewClient(ctx)
+	if err != nil {
+		log.Fatalf("Failed to create client: %v", err)
+	}
+
+	bucket := client.Bucket(settings.bucket)
+
+	jsonObj := bucket.Object(settings.jsonPath)
+	jsonW := jsonObj.NewWriter(ctx)
+	defer jsonW.Close()
+	jsonW.Write(json)
+
+	pngObj := bucket.Object(settings.pngPath)
+	pngW := pngObj.NewWriter(ctx)
+	defer pngW.Close()
+	png.Encode(pngW, adsImg)
+
+	// Set ACLs to public
+	jsonObj.ACL().Set(ctx, storage.AllUsers, storage.RoleReader)
 }

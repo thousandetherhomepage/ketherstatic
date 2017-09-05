@@ -21,4 +21,5 @@
 #  version = "2.4.0"
 
 required = ["github.com/ethereum/go-ethereum",
-            "github.com/nfnt/resize"]
+            "github.com/nfnt/resize",
+            "cloud.google.com/go/storage"]
