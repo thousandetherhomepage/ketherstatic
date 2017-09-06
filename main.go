@@ -7,7 +7,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/ketherhomepage/ketherstatic/ketherhomepage"
+  "github.com/thousandetherhomepage/ketherstatic/ketherhomepage"
 )
 
 const defaultUrl = "http://localhost:8545"
