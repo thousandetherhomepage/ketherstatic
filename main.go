@@ -15,7 +15,7 @@ const defaultUrl = "http://localhost:8545"
 //const contractAddr = "0xffb81a3a20e7fc1d44c3222a2b7a6d5705a7064b"
 const defaultContractAddr = "0xb88404dd8fe4969ef67841250baef7f04f6b1a5e"
 
-const loopDuration = 10 * time.Minute
+const defaultLoopDuration = 10 * time.Minute
 
 const defaultBucket = "ketherhomepage"
 
@@ -60,5 +60,5 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error creating watcher: %v", err)
 	}
-	kw.Watch(10 * time.Second)
+	kw.Watch(defaultLoopDuration)
 }
