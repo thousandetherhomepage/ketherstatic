@@ -41,7 +41,7 @@ type Ad struct {
 	Link      string `json:"link,omitempty"`
 	Image     string `json:"image,omitempty"`
 	Title     string `json:"title,omitempty"`
-	UserNSFW  bool   `json:"userNSFW"`
+	NSFW      bool   `json:"NSFW"`
 	ForceNSFW bool   `json:"forceNSFW"`
 }
 
@@ -131,7 +131,7 @@ func (w *KetherWatcher) Watch(duration time.Duration) {
 				Link:      adData.Link,
 				Image:     adData.Image,
 				Title:     adData.Title,
-				UserNSFW:  adData.NSFW,
+				NSFW:      adData.NSFW,
 				ForceNSFW: adData.ForceNSFW,
 			}
 			ads[i] = ad
@@ -178,7 +178,7 @@ func drawAd(img *image.RGBA, ad Ad) error {
 	adBounds := image.Rect(x, y, x+width, y+height)
 
 	draw.Draw(img, adBounds, &image.Uniform{color.Black}, image.ZP, draw.Src)
-	if ad.Image == "" || ad.UserNSFW || ad.ForceNSFW {
+	if ad.Image == "" || ad.NSFW || ad.ForceNSFW {
 		// No ad or NSFW, skip
 		return nil
 	}
