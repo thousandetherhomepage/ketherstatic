@@ -100,14 +100,18 @@ func NewKetherWatcher(name string, rpcUrl string, contractAddr string, bucketNam
 func (w *KetherWatcher) Watch(duration time.Duration) {
 	tick := time.Tick(duration)
 	for {
-		log.Printf("%s: Syncing with blockchain", w.name)
+		// Run every tick
+		<-tick
+
+		log.Printf("%s: Syncing with blockchain, block %d", w.name, blockNumber)
 
 		adsImage := image.NewRGBA(image.Rect(0, 0, adsImageWidth, adsImageHeight))
 		draw.Draw(adsImage, adsImage.Bounds(), &image.Uniform{defaultBgColor}, image.ZP, draw.Src)
 
 		adsLength, err := w.session.GetAdsLength()
 		if err != nil {
-			log.Fatalf("%s: Failed to call getAdsLength: %v", w.name, err)
+			log.Printf("%s: Failed to call getAdsLength: %v", w.name, err)
+			continue
 		}
 		log.Printf("%s: Found %d ads", w.name, adsLength)
 
@@ -118,7 +122,8 @@ func (w *KetherWatcher) Watch(duration time.Duration) {
 		for i := 0; i < length; i++ {
 			adData, err := w.session.Ads(big.NewInt(int64(i)))
 			if err != nil {
-				log.Fatalf("%s: Failed to retrieve the ad: %v", w.name, err)
+				log.Printf("%s: Failed to retrieve the ad: %v", w.name, err)
+				continue
 			}
 
 			ad := Ad{
@@ -140,6 +145,7 @@ func (w *KetherWatcher) Watch(duration time.Duration) {
 			if err != nil {
 				// Don't fatal since we want to keep going
 				log.Printf("%s: error drawing ad %d: %v", w.name, i, err)
+				// we don't continue here
 			}
 
 			log.Printf("%s: Drew ad %d. Link: %s, Image: %s, Title: %s", w.name, i, ad.Link, ad.Image, ad.Title)
@@ -147,7 +153,8 @@ func (w *KetherWatcher) Watch(duration time.Duration) {
 
 		json, err := json.Marshal(ads)
 		if err != nil {
-			log.Fatalf("%s: Couldn't marshal ads to json: %v", w.name, err)
+			log.Printf("%s: Couldn't marshal ads to json: %v", w.name, err)
+			continue
 		}
 
 		jsonW := w.jsonObject.NewWriter(w.ctx)
@@ -164,7 +171,6 @@ func (w *KetherWatcher) Watch(duration time.Duration) {
 		w.jsonObject.ACL().Set(w.ctx, storage.AllUsers, storage.RoleReader)
 		w.pngObject.ACL().Set(w.ctx, storage.AllUsers, storage.RoleReader)
 
-		<-tick
 	}
 }
 
