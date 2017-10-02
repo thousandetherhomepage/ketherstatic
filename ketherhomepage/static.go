@@ -202,22 +202,22 @@ func drawAd(img *image.RGBA, ad Ad) error {
 	adBounds := image.Rect(x, y, x+width, y+height)
 
 	if ad.Image == "" {
-		draw.Draw(img, adBounds, &image.Uniform{defaultEmptyColor}, image.ZP, draw.Src)
+		draw.Draw(img, adBounds, &image.Uniform{defaultEmptyColor}, image.ZP, draw.Over)
 		return nil
 	} else if ad.NSFW || ad.ForceNSFW {
-		draw.Draw(img, adBounds, &image.Uniform{defaultNSFWColor}, image.ZP, draw.Src)
+		draw.Draw(img, adBounds, &image.Uniform{defaultNSFWColor}, image.ZP, draw.Over)
 		return nil
 	}
 
 	adImage, err := getImage(ad.Image)
 	if err != nil {
-		draw.Draw(img, adBounds, &image.Uniform{defaultEmptyColor}, image.ZP, draw.Src)
+		draw.Draw(img, adBounds, &image.Uniform{defaultEmptyColor}, image.ZP, draw.Over)
 		return err
 	}
 
 	scaledAdImg := resize.Resize(uint(width), uint(height), adImage, resize.Lanczos3)
 
-	draw.Draw(img, adBounds, scaledAdImg, image.ZP, draw.Src)
+	draw.Draw(img, adBounds, scaledAdImg, image.ZP, draw.Over)
 	return nil
 }
 
@@ -244,6 +244,22 @@ func getImage(imageUrl string) (image.Image, error) {
 		}
 
 		adImage, _, err := image.Decode(bytes.NewReader(imgData))
+		return adImage, err
+	} else if u.Scheme == "ipfs" {
+		resp, err := http.Get("https://gateway.ipfs.io/ipfs/" + u.Host)
+		if err != nil {
+			return nil, err
+		}
+
+		adImage, _, err := image.Decode(resp.Body)
+		return adImage, err
+	} else if u.Scheme == "bzz" {
+		resp, err := http.Get("http://swarm-gateways.net/bzz:/" + u.Host)
+		if err != nil {
+			return nil, err
+		}
+
+		adImage, _, err := image.Decode(resp.Body)
 		return adImage, err
 	} else {
 		return nil, fmt.Errorf("Couldn't parse image URL: %s", imageUrl)
