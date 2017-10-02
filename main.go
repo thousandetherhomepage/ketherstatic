@@ -7,15 +7,13 @@ import (
 	"log"
 	"time"
 
-  "github.com/thousandetherhomepage/ketherstatic/ketherhomepage"
+	"github.com/thousandetherhomepage/ketherstatic/ketherhomepage"
 )
 
 const defaultUrl = "http://localhost:8545"
 
 //const contractAddr = "0xffb81a3a20e7fc1d44c3222a2b7a6d5705a7064b"
 const defaultContractAddr = "0xb88404dd8fe4969ef67841250baef7f04f6b1a5e"
-
-const defaultLoopDuration = 10 * time.Minute
 
 const defaultBucket = "ketherhomepage"
 
@@ -25,6 +23,7 @@ type settings struct {
 	bucket       string
 	jsonPath     string
 	pngPath      string
+	loopDuration time.Duration
 }
 
 func processFlags() settings {
@@ -33,6 +32,7 @@ func processFlags() settings {
 	bucket := flag.String("bucket", defaultBucket, "Bucket to upload into")
 	jsonPath := flag.String("jsonPath", "", "Path to write JSON to")
 	pngPath := flag.String("pngPath", "", "Path to write PNG file to")
+	loopDuration := flag.Int("loopDuration", 10*60, "Time in seconds to wait between queries")
 
 	flag.Parse()
 
@@ -50,6 +50,7 @@ func processFlags() settings {
 		bucket:       *bucket,
 		jsonPath:     *jsonPath,
 		pngPath:      *pngPath,
+		loopDuration: time.Duration(*loopDuration) * time.Second,
 	}
 
 }
@@ -60,5 +61,5 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error creating watcher: %v", err)
 	}
-	kw.Watch(defaultLoopDuration)
+	kw.Watch(settings.loopDuration)
 }
