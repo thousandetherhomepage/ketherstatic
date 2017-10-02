@@ -26,7 +26,9 @@ import (
 	"cloud.google.com/go/storage"
 )
 
-var defaultBgColor = color.RGBA{221, 221, 221, 1}
+var defaultBgColor = color.RGBA{221, 221, 221, 255}
+var defaultEmptyColor = color.RGBA{255, 255, 255, 128}
+var defaultNSFWColor = color.Black
 
 const adsImageWidth = 1000
 const adsImageHeight = 1000
@@ -45,12 +47,18 @@ type Ad struct {
 	ForceNSFW bool   `json:"forceNSFW"`
 }
 
+type KetherData struct {
+	Ads         []Ad `json:"ads"`
+	BlockNumber int  `json:"blockNumber"`
+}
+
 type KetherWatcher struct {
 	name       string
 	ctx        context.Context
 	session    *KetherHomepageSession
 	jsonObject *storage.ObjectHandle
 	pngObject  *storage.ObjectHandle
+	rpcClient  *ethclient.Client
 }
 
 func NewKetherWatcher(name string, rpcUrl string, contractAddr string, bucketName string, jsonPath string, pngPath string) (*KetherWatcher, error) {
@@ -93,15 +101,24 @@ func NewKetherWatcher(name string, rpcUrl string, contractAddr string, bucketNam
 		session:    session,
 		jsonObject: jsonObject,
 		pngObject:  pngObject,
+		rpcClient:  conn,
 	}
 	return kw, nil
 }
 
 func (w *KetherWatcher) Watch(duration time.Duration) {
 	tick := time.Tick(duration)
-	for {
-		// Run every tick
-		<-tick
+	for range tick {
+		ctx := context.Background()
+		header, err := w.rpcClient.HeaderByNumber(ctx, nil)
+		if err != nil {
+			log.Printf("%s: Failed to call eth_blockNumber: %s", w.name, err)
+			continue
+		}
+
+		blockNumber := header.Number
+
+		fmt.Println("block number", blockNumber)
 
 		log.Printf("%s: Syncing with blockchain, block %d", w.name, blockNumber)
 
@@ -151,7 +168,8 @@ func (w *KetherWatcher) Watch(duration time.Duration) {
 			log.Printf("%s: Drew ad %d. Link: %s, Image: %s, Title: %s", w.name, i, ad.Link, ad.Image, ad.Title)
 		}
 
-		json, err := json.Marshal(ads)
+		data := KetherData{BlockNumber: int(blockNumber.Int64()), Ads: ads}
+		json, err := json.Marshal(data)
 		if err != nil {
 			log.Printf("%s: Couldn't marshal ads to json: %v", w.name, err)
 			continue
@@ -183,14 +201,17 @@ func drawAd(img *image.RGBA, ad Ad) error {
 	// First we draw the ad as a black rectangle to indicate it's bought
 	adBounds := image.Rect(x, y, x+width, y+height)
 
-	draw.Draw(img, adBounds, &image.Uniform{color.RGBA{255, 255, 255, 0.5}}, image.ZP, draw.Src)
-	if ad.Image == "" || ad.NSFW || ad.ForceNSFW {
-		// No ad or NSFW, skip
+	if ad.Image == "" {
+		draw.Draw(img, adBounds, &image.Uniform{defaultEmptyColor}, image.ZP, draw.Src)
+		return nil
+	} else if ad.NSFW || ad.ForceNSFW {
+		draw.Draw(img, adBounds, &image.Uniform{defaultNSFWColor}, image.ZP, draw.Src)
 		return nil
 	}
 
 	adImage, err := getImage(ad.Image)
 	if err != nil {
+		draw.Draw(img, adBounds, &image.Uniform{defaultEmptyColor}, image.ZP, draw.Src)
 		return err
 	}
 
