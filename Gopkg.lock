@@ -75,6 +75,12 @@
 
 [[projects]]
   branch = "master"
+  name = "github.com/thousandetherhomepage/ketherstatic"
+  packages = ["ketherhomepage"]
+  revision = "c9c081ec94855675272bf358e7715e9b49481a3e"
+
+[[projects]]
+  branch = "master"
   name = "golang.org/x/crypto"
   packages = ["pbkdf2","scrypt"]
   revision = "eb71ad9bd329b5ac0fd0148dd99bd62e8be8e035"
@@ -154,6 +160,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "680be64511d08012105c762787909dc9e20a80c0929a2932bcea6cafe8933be4"
+  inputs-digest = "4902ede5bcd1cf4675f408058c4290532ad4f4f9fee6c7a457c8e1e0a45709a6"
   solver-name = "gps-cdcl"
   solver-version = 1
