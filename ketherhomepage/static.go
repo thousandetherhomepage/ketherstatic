@@ -183,7 +183,7 @@ func drawAd(img *image.RGBA, ad Ad) error {
 	// First we draw the ad as a black rectangle to indicate it's bought
 	adBounds := image.Rect(x, y, x+width, y+height)
 
-	draw.Draw(img, adBounds, &image.Uniform{color.Black}, image.ZP, draw.Src)
+	draw.Draw(img, adBounds, &image.Uniform{color.RGBA{255, 255, 255, 0.5}}, image.ZP, draw.Src)
 	if ad.Image == "" || ad.NSFW || ad.ForceNSFW {
 		// No ad or NSFW, skip
 		return nil
