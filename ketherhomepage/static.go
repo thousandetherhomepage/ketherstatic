@@ -189,6 +189,10 @@ func (w *KetherWatcher) Watch(duration time.Duration) {
 		w.jsonObject.ACL().Set(w.ctx, storage.AllUsers, storage.RoleReader)
 		w.pngObject.ACL().Set(w.ctx, storage.AllUsers, storage.RoleReader)
 
+		// Lower the cache times
+		w.jsonObject.Update(w.ctx, storage.ObjectAttrsToUpdate{CacheControl: "public, max-age=600"})
+		w.pngObject.Update(w.ctx, storage.ObjectAttrsToUpdate{CacheControl: "public, max-age=600"})
+
 	}
 }
 
