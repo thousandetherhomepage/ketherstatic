@@ -26,8 +26,8 @@ import (
 	"cloud.google.com/go/storage"
 )
 
-var defaultBgColor = color.RGBA{221, 221, 221, 255}
-var defaultEmptyColor = color.RGBA{255, 255, 255, 128}
+var defaultBgColor = color.Transparent
+var defaultEmptyColor = color.Transparent
 var defaultNSFWColor = color.Black
 
 const adsImageWidth = 1000
