@@ -53,15 +53,16 @@ type KetherData struct {
 }
 
 type KetherWatcher struct {
-	name       string
-	ctx        context.Context
-	session    *KetherHomepageSession
-	jsonObject *storage.ObjectHandle
-	pngObject  *storage.ObjectHandle
-	rpcClient  *ethclient.Client
+	name        string
+	ctx         context.Context
+	session     *KetherHomepageSession
+	jsonObject  *storage.ObjectHandle
+	pngObject   *storage.ObjectHandle
+	png2XObject *storage.ObjectHandle
+	rpcClient   *ethclient.Client
 }
 
-func NewKetherWatcher(name string, rpcUrl string, contractAddr string, bucketName string, jsonPath string, pngPath string) (*KetherWatcher, error) {
+func NewKetherWatcher(name string, rpcUrl string, contractAddr string, bucketName string, jsonPath string, pngPath string, png2XPath string) (*KetherWatcher, error) {
 	conn, err := ethclient.Dial(rpcUrl)
 	if err != nil {
 		return nil, err
@@ -94,14 +95,16 @@ func NewKetherWatcher(name string, rpcUrl string, contractAddr string, bucketNam
 	bucket := storageClient.Bucket(bucketName)
 	jsonObject := bucket.Object(jsonPath)
 	pngObject := bucket.Object(pngPath)
+	png2XObject := bucket.Object(png2XPath)
 
 	kw := &KetherWatcher{
-		name:       name,
-		ctx:        ctx,
-		session:    session,
-		jsonObject: jsonObject,
-		pngObject:  pngObject,
-		rpcClient:  conn,
+		name:        name,
+		ctx:         ctx,
+		session:     session,
+		jsonObject:  jsonObject,
+		pngObject:   pngObject,
+		png2XObject: png2XObject,
+		rpcClient:   conn,
 	}
 	return kw, nil
 }
@@ -123,6 +126,7 @@ func (w *KetherWatcher) Watch(duration time.Duration) {
 		log.Printf("%s: Syncing with blockchain, block %d", w.name, blockNumber)
 
 		adsImage := image.NewRGBA(image.Rect(0, 0, adsImageWidth, adsImageHeight))
+		adsImage2X := image.NewRGBA(image.Rect(0, 0, 2*adsImageWidth, 2*adsImageHeight))
 		draw.Draw(adsImage, adsImage.Bounds(), &image.Uniform{defaultBgColor}, image.ZP, draw.Src)
 
 		adsLength, err := w.session.GetAdsLength()
@@ -158,7 +162,7 @@ func (w *KetherWatcher) Watch(duration time.Duration) {
 			}
 			ads[i] = ad
 
-			err = drawAd(adsImage, ad)
+			err = drawAd(adsImage, adsImage2X, ad)
 			if err != nil {
 				// Don't fatal since we want to keep going
 				log.Printf("%s: error drawing ad %d: %v", w.name, i, err)
@@ -185,43 +189,56 @@ func (w *KetherWatcher) Watch(duration time.Duration) {
 		pngW.Close()
 		log.Printf("%s: Wrote PNG", w.name)
 
+		png2XW := w.png2XObject.NewWriter(w.ctx)
+		png.Encode(png2XW, adsImage2X)
+		png2XW.Close()
+		log.Printf("%s: Wrote PNG @ 2x", w.name)
+
 		// Set ACLs to public
 		w.jsonObject.ACL().Set(w.ctx, storage.AllUsers, storage.RoleReader)
 		w.pngObject.ACL().Set(w.ctx, storage.AllUsers, storage.RoleReader)
+		w.png2XObject.ACL().Set(w.ctx, storage.AllUsers, storage.RoleReader)
 
 		// Lower the cache times
 		w.jsonObject.Update(w.ctx, storage.ObjectAttrsToUpdate{CacheControl: "public, max-age=600"})
 		w.pngObject.Update(w.ctx, storage.ObjectAttrsToUpdate{CacheControl: "public, max-age=600"})
+		w.png2XObject.Update(w.ctx, storage.ObjectAttrsToUpdate{CacheControl: "public, max-age=600"})
 
 	}
 }
 
-func drawAd(img *image.RGBA, ad Ad) error {
+func drawAd(img *image.RGBA, img2X *image.RGBA, ad Ad) error {
 	cellWidth := 10
 	x := ad.X * cellWidth
 	y := ad.Y * cellWidth
+
 	width := ad.Width * cellWidth
 	height := ad.Height * cellWidth
-	// First we draw the ad as a black rectangle to indicate it's bought
 	adBounds := image.Rect(x, y, x+width, y+height)
+	adBounds2X := image.Rect(x*2, y*2, (x+width)*2, (y+height)*2)
 
 	if ad.Image == "" {
 		draw.Draw(img, adBounds, &image.Uniform{defaultEmptyColor}, image.ZP, draw.Over)
+		draw.Draw(img2X, adBounds2X, &image.Uniform{defaultEmptyColor}, image.ZP, draw.Over)
 		return nil
 	} else if ad.NSFW || ad.ForceNSFW {
 		draw.Draw(img, adBounds, &image.Uniform{defaultNSFWColor}, image.ZP, draw.Over)
+		draw.Draw(img2X, adBounds2X, &image.Uniform{defaultNSFWColor}, image.ZP, draw.Over)
 		return nil
 	}
 
 	adImage, err := getImage(ad.Image)
 	if err != nil {
 		draw.Draw(img, adBounds, &image.Uniform{defaultEmptyColor}, image.ZP, draw.Over)
+		draw.Draw(img2X, adBounds2X, &image.Uniform{defaultEmptyColor}, image.ZP, draw.Over)
 		return err
 	}
 
-	scaledAdImg := resize.Resize(uint(width), uint(height), adImage, resize.Lanczos3)
+	scaledAdImg := resize.Resize(uint(width), uint(height), adImage, resize.Bicubic)
+	scaledAdImg2X := resize.Resize(uint(width*2), uint(height*2), adImage, resize.Bicubic)
 
 	draw.Draw(img, adBounds, scaledAdImg, image.ZP, draw.Over)
+	draw.Draw(img2X, adBounds2X, scaledAdImg2X, image.ZP, draw.Over)
 	return nil
 }
 

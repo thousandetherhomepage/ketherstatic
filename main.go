@@ -23,6 +23,7 @@ type settings struct {
 	bucket       string
 	jsonPath     string
 	pngPath      string
+	png2XPath    string
 	loopDuration time.Duration
 }
 
@@ -32,6 +33,7 @@ func processFlags() settings {
 	bucket := flag.String("bucket", defaultBucket, "Bucket to upload into")
 	jsonPath := flag.String("jsonPath", "", "Path to write JSON to")
 	pngPath := flag.String("pngPath", "", "Path to write PNG file to")
+	png2XPath := flag.String("png2XPath", "", "Path to write PNG retina-scaled file to")
 	loopDuration := flag.Int("loopDuration", 10*60, "Time in seconds to wait between queries")
 
 	flag.Parse()
@@ -44,12 +46,17 @@ func processFlags() settings {
 		log.Fatal("PNG path required")
 	}
 
+	if *png2XPath == "" {
+		log.Fatal("PNG retina-scaled path required")
+	}
+
 	return settings{
 		rpcUrl:       *rpcUrl,
 		contractAddr: *contractAddr,
 		bucket:       *bucket,
 		jsonPath:     *jsonPath,
 		pngPath:      *pngPath,
+		png2XPath:    *png2XPath,
 		loopDuration: time.Duration(*loopDuration) * time.Second,
 	}
 
@@ -57,7 +64,7 @@ func processFlags() settings {
 
 func main() {
 	settings := processFlags()
-	kw, err := ketherhomepage.NewKetherWatcher("rinkeby", settings.rpcUrl, settings.contractAddr, settings.bucket, settings.jsonPath, settings.pngPath)
+	kw, err := ketherhomepage.NewKetherWatcher("rinkeby", settings.rpcUrl, settings.contractAddr, settings.bucket, settings.jsonPath, settings.pngPath, settings.png2XPath)
 	if err != nil {
 		log.Fatalf("Error creating watcher: %v", err)
 	}
