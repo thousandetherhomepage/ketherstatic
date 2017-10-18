@@ -45,6 +45,7 @@ type Ad struct {
 	Title     string `json:"title,omitempty"`
 	NSFW      bool   `json:"NSFW"`
 	ForceNSFW bool   `json:"forceNSFW"`
+	ImageSize int    `json:"imageSize"`
 }
 
 type KetherData struct {
@@ -147,22 +148,38 @@ func (w *KetherWatcher) Watch(duration time.Duration) {
 				continue
 			}
 
+			var imageSize int
+			var img image.Image
+			drawNSFW := adData.NSFW || adData.ForceNSFW
+			x := int(adData.X.Int64())
+			y := int(adData.Y.Int64())
+			width := int(adData.Width.Int64())
+			height := int(adData.Height.Int64())
+
+			if adData.Image == "" {
+				imageSize = 0
+				drawAd(adsImage, adsImage2X, nil, x, y, width, height, drawNSFW)
+			} else {
+				img, imageSize, err = getImage(adData.Image)
+				drawAd(adsImage, adsImage2X, img, x, y, width, height, drawNSFW)
+			}
+
 			ad := Ad{
 				Idx:       i,
 				Owner:     adData.Owner.Hex(),
-				X:         int(adData.X.Int64()),
-				Y:         int(adData.Y.Int64()),
-				Width:     int(adData.Width.Int64()),
-				Height:    int(adData.Height.Int64()),
+				X:         x,
+				Y:         y,
+				Width:     width,
+				Height:    height,
 				Link:      adData.Link,
 				Image:     adData.Image,
 				Title:     adData.Title,
 				NSFW:      adData.NSFW,
 				ForceNSFW: adData.ForceNSFW,
+				ImageSize: imageSize,
 			}
 			ads[i] = ad
 
-			err = drawAd(adsImage, adsImage2X, ad)
 			if err != nil {
 				// Don't fatal since we want to keep going
 				log.Printf("%s: error drawing ad %d: %v", w.name, i, err)
@@ -207,82 +224,80 @@ func (w *KetherWatcher) Watch(duration time.Duration) {
 	}
 }
 
-func drawAd(img *image.RGBA, img2X *image.RGBA, ad Ad) error {
+func drawAd(img *image.RGBA, img2X *image.RGBA, adImage image.Image, adX int, adY int, adWidth int, adHeight int, nsfw bool) {
 	cellWidth := 10
-	x := ad.X * cellWidth
-	y := ad.Y * cellWidth
+	x := adX * cellWidth
+	y := adY * cellWidth
 
-	width := ad.Width * cellWidth
-	height := ad.Height * cellWidth
+	width := adWidth * cellWidth
+	height := adHeight * cellWidth
 	adBounds := image.Rect(x, y, x+width, y+height)
 	adBounds2X := image.Rect(x*2, y*2, (x+width)*2, (y+height)*2)
 
-	if ad.Image == "" {
+	if adImage == nil {
 		draw.Draw(img, adBounds, &image.Uniform{defaultEmptyColor}, image.ZP, draw.Over)
 		draw.Draw(img2X, adBounds2X, &image.Uniform{defaultEmptyColor}, image.ZP, draw.Over)
-		return nil
-	} else if ad.NSFW || ad.ForceNSFW {
+	} else if nsfw {
 		draw.Draw(img, adBounds, &image.Uniform{defaultNSFWColor}, image.ZP, draw.Over)
 		draw.Draw(img2X, adBounds2X, &image.Uniform{defaultNSFWColor}, image.ZP, draw.Over)
-		return nil
+	} else {
+
+		scaledAdImg := resize.Resize(uint(width), uint(height), adImage, resize.Bicubic)
+		scaledAdImg2X := resize.Resize(uint(width*2), uint(height*2), adImage, resize.Bicubic)
+
+		draw.Draw(img, adBounds, scaledAdImg, image.ZP, draw.Over)
+		draw.Draw(img2X, adBounds2X, scaledAdImg2X, image.ZP, draw.Over)
 	}
-
-	adImage, err := getImage(ad.Image)
-	if err != nil {
-		draw.Draw(img, adBounds, &image.Uniform{defaultEmptyColor}, image.ZP, draw.Over)
-		draw.Draw(img2X, adBounds2X, &image.Uniform{defaultEmptyColor}, image.ZP, draw.Over)
-		return err
-	}
-
-	scaledAdImg := resize.Resize(uint(width), uint(height), adImage, resize.Bicubic)
-	scaledAdImg2X := resize.Resize(uint(width*2), uint(height*2), adImage, resize.Bicubic)
-
-	draw.Draw(img, adBounds, scaledAdImg, image.ZP, draw.Over)
-	draw.Draw(img2X, adBounds2X, scaledAdImg2X, image.ZP, draw.Over)
-	return nil
 }
 
-func getImage(imageUrl string) (image.Image, error) {
+func getImage(imageUrl string) (image.Image, int, error) {
 	u, err := url.Parse(imageUrl)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	if u.Scheme == "http" || u.Scheme == "https" {
 		resp, err := http.Get(imageUrl)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 
 		adImage, _, err := image.Decode(resp.Body)
-		return adImage, err
+		size := int(resp.ContentLength)
+
+		return adImage, size, err
 
 	} else if u.Scheme == "data" {
 		// This is not a fully compliant way of parsing data:// urls, assumes
 		// they are base64 encoded. Should work for now though
 		imgData, err := base64.StdEncoding.DecodeString(strings.Split(u.Opaque, ",")[1])
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
-
 		adImage, _, err := image.Decode(bytes.NewReader(imgData))
-		return adImage, err
+		size := len(imgData)
+
+		return adImage, size, err
 	} else if u.Scheme == "ipfs" {
 		resp, err := http.Get("https://gateway.ipfs.io/ipfs/" + u.Host)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 
 		adImage, _, err := image.Decode(resp.Body)
-		return adImage, err
+		size := int(resp.ContentLength)
+
+		return adImage, size, err
 	} else if u.Scheme == "bzz" {
 		resp, err := http.Get("http://swarm-gateways.net/bzz:/" + u.Host)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 
 		adImage, _, err := image.Decode(resp.Body)
-		return adImage, err
+		size := int(resp.ContentLength)
+
+		return adImage, size, err
 	} else {
-		return nil, fmt.Errorf("Couldn't parse image URL: %s", imageUrl)
+		return nil, 0, fmt.Errorf("Couldn't parse image URL: %s", imageUrl)
 	}
 }
