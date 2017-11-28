@@ -196,30 +196,68 @@ func (w *KetherWatcher) Watch(duration time.Duration) {
 			continue
 		}
 
+		log.Printf("%s: Writing JSON", w.name)
 		jsonW := w.jsonObject.NewWriter(w.ctx)
-		jsonW.Write(json)
-		jsonW.Close()
-		log.Printf("%s: Wrote JSON", w.name)
+		_, err = jsonW.Write(json)
+		if err != nil {
+			log.Printf("%s: Couldn't write json: %v", w.name, err)
+		}
+		err = jsonW.Close()
+		if err != nil {
+			log.Printf("%s: Couldn't close JSON writer: %v", w.name, err)
+		}
 
+		log.Printf("%s: Writing PNG", w.name)
 		pngW := w.pngObject.NewWriter(w.ctx)
-		png.Encode(pngW, adsImage)
-		pngW.Close()
-		log.Printf("%s: Wrote PNG", w.name)
+		err = png.Encode(pngW, adsImage)
+		if err != nil {
+			log.Printf("%s: Couldn't write PNG: %v", w.name, err)
+		}
+		err = pngW.Close()
+		if err != nil {
+			log.Printf("%s: Couldn't close PNG writer: %v", w.name, err)
+		}
 
+		log.Printf("%s: Writing 2x PNG", w.name)
 		png2XW := w.png2XObject.NewWriter(w.ctx)
-		png.Encode(png2XW, adsImage2X)
-		png2XW.Close()
-		log.Printf("%s: Wrote PNG @ 2x", w.name)
+		err = png.Encode(png2XW, adsImage2X)
+		if err != nil {
+			log.Printf("%s: Couldn't write 2x PNG: %v", w.name, err)
+		}
+		err = png2XW.Close()
+		if err != nil {
+			log.Printf("%s: Couldn't close 2x PNG: %v", w.name, err)
+		}
 
 		// Set ACLs to public
-		w.jsonObject.ACL().Set(w.ctx, storage.AllUsers, storage.RoleReader)
-		w.pngObject.ACL().Set(w.ctx, storage.AllUsers, storage.RoleReader)
-		w.png2XObject.ACL().Set(w.ctx, storage.AllUsers, storage.RoleReader)
+		log.Printf("%s: Setting ACLs to public", w.name)
+		err = w.jsonObject.ACL().Set(w.ctx, storage.AllUsers, storage.RoleReader)
+		if err != nil {
+			log.Printf("%s: Couldn't set JSON ACL: %v", w.name, err)
+		}
+		err = w.pngObject.ACL().Set(w.ctx, storage.AllUsers, storage.RoleReader)
+		if err != nil {
+			log.Printf("%s: Couldn't set PNG ACL: %v", w.name, err)
+		}
+		err = w.png2XObject.ACL().Set(w.ctx, storage.AllUsers, storage.RoleReader)
+		if err != nil {
+			log.Printf("%s: Couldn't set 2x PNG ACL: %v", w.name, err)
+		}
 
 		// Lower the cache times
-		w.jsonObject.Update(w.ctx, storage.ObjectAttrsToUpdate{CacheControl: "public, max-age=600"})
-		w.pngObject.Update(w.ctx, storage.ObjectAttrsToUpdate{CacheControl: "public, max-age=600"})
-		w.png2XObject.Update(w.ctx, storage.ObjectAttrsToUpdate{CacheControl: "public, max-age=600"})
+		log.Printf("%s: Lowering cache times", w.name)
+		_, err = w.jsonObject.Update(w.ctx, storage.ObjectAttrsToUpdate{CacheControl: "public, max-age=600"})
+		if err != nil {
+			log.Printf("%s: Couldn't set JSON cache time: %v", w.name, err)
+		}
+		_, err = w.pngObject.Update(w.ctx, storage.ObjectAttrsToUpdate{CacheControl: "public, max-age=600"})
+		if err != nil {
+			log.Printf("%s: Couldn't set PNG cache time: %v", w.name, err)
+		}
+		_, err = w.png2XObject.Update(w.ctx, storage.ObjectAttrsToUpdate{CacheControl: "public, max-age=600"})
+		if err != nil {
+			log.Printf("%s: Couldn't set 2x PNG cache time: %v", w.name, err)
+		}
 
 	}
 }
