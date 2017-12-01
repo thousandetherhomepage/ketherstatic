@@ -23,7 +23,6 @@ import (
 	"github.com/nfnt/resize"
 
 	"cloud.google.com/go/storage"
-	raven "github.com/getsentry/raven-go"
 	log "github.com/thousandetherhomepage/ketherstatic/log"
 )
 
