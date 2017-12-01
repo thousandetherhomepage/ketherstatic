@@ -4,10 +4,10 @@ import (
 	"flag"
 	_ "image/gif"
 	_ "image/jpeg"
-	"log"
 	"time"
 
 	"github.com/thousandetherhomepage/ketherstatic/ketherhomepage"
+	log "github.com/thousandetherhomepage/ketherstatic/log"
 )
 
 const defaultName = "rinkeby"
