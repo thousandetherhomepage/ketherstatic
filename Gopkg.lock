@@ -20,10 +20,22 @@
   revision = "45ea940039d9685a38a8996867672fd21ee9c0f2"
 
 [[projects]]
+  name = "github.com/certifi/gocertifi"
+  packages = ["."]
+  revision = "a4ab0227d360091084658029ec8ae45f989fba3e"
+  version = "2017.11.05"
+
+[[projects]]
   name = "github.com/ethereum/go-ethereum"
   packages = [".","accounts","accounts/abi","accounts/abi/bind","accounts/keystore","common","common/hexutil","common/math","common/mclock","core/types","crypto","crypto/randentropy","crypto/secp256k1","crypto/sha3","ethclient","event","log","params","rlp","rpc","trie"]
   revision = "ab5646c532292b51e319f290afccf6a44f874372"
   version = "v1.6.7"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/getsentry/raven-go"
+  packages = ["."]
+  revision = "c9de0b92586aaba092c2a231cb7384354b178544"
 
 [[projects]]
   name = "github.com/go-stack/stack"
@@ -56,6 +68,12 @@
   version = "v1.1"
 
 [[projects]]
+  name = "github.com/pkg/errors"
+  packages = ["."]
+  revision = "645ef00459ed84a119197bfb8d8205042c6df63d"
+  version = "v0.8.0"
+
+[[projects]]
   branch = "master"
   name = "github.com/rcrowley/go-metrics"
   packages = ["."]
@@ -72,12 +90,6 @@
   packages = ["."]
   revision = "7af7a1e09ba336d2ea14b1ce73bf693c6837dbf6"
   version = "v1.2"
-
-[[projects]]
-  branch = "master"
-  name = "github.com/thousandetherhomepage/ketherstatic"
-  packages = ["ketherhomepage"]
-  revision = "c9c081ec94855675272bf358e7715e9b49481a3e"
 
 [[projects]]
   branch = "master"
@@ -160,6 +172,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "4902ede5bcd1cf4675f408058c4290532ad4f4f9fee6c7a457c8e1e0a45709a6"
+  inputs-digest = "50a7f018e528224783310b2aafca07d837d18f0e00f65761c56a9ac7d3bdb64e"
   solver-name = "gps-cdcl"
   solver-version = 1
