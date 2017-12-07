@@ -54,7 +54,7 @@ type KetherData struct {
 }
 
 type KetherWatcher struct {
-	name        string
+	network     string
 	ctx         context.Context
 	session     *KetherHomepageSession
 	jsonObject  *storage.ObjectHandle
@@ -63,7 +63,7 @@ type KetherWatcher struct {
 	rpcClient   *ethclient.Client
 }
 
-func NewKetherWatcher(name string, rpcUrl string, contractAddr string, bucketName string, jsonPath string, pngPath string, png2XPath string) (*KetherWatcher, error) {
+func NewKetherWatcher(network string, rpcUrl string, contractAddr string, bucketName string, jsonPath string, pngPath string, png2XPath string) (*KetherWatcher, error) {
 	conn, err := ethclient.Dial(rpcUrl)
 	if err != nil {
 		return nil, err
@@ -99,7 +99,7 @@ func NewKetherWatcher(name string, rpcUrl string, contractAddr string, bucketNam
 	png2XObject := bucket.Object(png2XPath)
 
 	kw := &KetherWatcher{
-		name:        name,
+		network:     network,
 		ctx:         ctx,
 		session:     session,
 		jsonObject:  jsonObject,
@@ -116,7 +116,7 @@ func (w *KetherWatcher) Watch(duration time.Duration) {
 		ctx := context.Background()
 		header, err := w.rpcClient.HeaderByNumber(ctx, nil)
 		if err != nil {
-			log.Printf("%s: Failed to call eth_blockNumber: %s", w.name, err)
+			log.Printf("%s: Failed to call eth_blockNumber: %s", w.network, err)
 			continue
 		}
 
@@ -124,7 +124,7 @@ func (w *KetherWatcher) Watch(duration time.Duration) {
 
 		fmt.Println("block number", blockNumber)
 
-		log.Printf("%s: Syncing with blockchain, block %d", w.name, blockNumber)
+		log.Printf("%s: Syncing with blockchain, block %d", w.network, blockNumber)
 
 		adsImage := image.NewRGBA(image.Rect(0, 0, adsImageWidth, adsImageHeight))
 		adsImage2X := image.NewRGBA(image.Rect(0, 0, 2*adsImageWidth, 2*adsImageHeight))
@@ -132,10 +132,10 @@ func (w *KetherWatcher) Watch(duration time.Duration) {
 
 		adsLength, err := w.session.GetAdsLength()
 		if err != nil {
-			log.Errorf("%s: Failed to call getAdsLength: %v", w.name, err)
+			log.Errorf("%s: Failed to call getAdsLength: %v", w.network, err)
 			continue
 		}
-		log.Printf("%s: Found %d ads", w.name, adsLength)
+		log.Printf("%s: Found %d ads", w.network, adsLength)
 
 		// We can't have more than MaxInt ads by defintion.
 		length := int(adsLength.Int64())
@@ -144,7 +144,7 @@ func (w *KetherWatcher) Watch(duration time.Duration) {
 		for i := 0; i < length; i++ {
 			adData, err := w.session.Ads(big.NewInt(int64(i)))
 			if err != nil {
-				log.Errorf("%s: Failed to retrieve the ad: %v", w.name, err)
+				log.Errorf("%s: Failed to retrieve the ad: %v", w.network, err)
 				continue
 			}
 
@@ -182,83 +182,66 @@ func (w *KetherWatcher) Watch(duration time.Duration) {
 
 			if err != nil {
 				// Don't fatal since we want to keep going
-				log.Errorf("%s: error drawing ad %d: %v", w.name, i, err)
+				log.Errorf("%s: error drawing ad %d: %v", w.network, i, err)
 				// we don't continue here
 			}
 
-			log.Printf("%s: Drew ad %d. Link: %s, Image: %s, Title: %s", w.name, i, ad.Link, ad.Image, ad.Title)
+			log.Printf("%s: Drew ad %d. Link: %s, Image: %s, Title: %s", w.network, i, ad.Link, ad.Image, ad.Title)
 		}
 
 		data := KetherData{BlockNumber: int(blockNumber.Int64()), Ads: ads}
 		json, err := json.Marshal(data)
 		if err != nil {
-			log.Errorf("%s: Couldn't marshal ads to json: %v", w.name, err)
+			log.Errorf("%s: Couldn't marshal ads to json: %v", w.network, err)
 			continue
 		}
+		writeData(w.network, "JSON", w.jsonObject, json, w.ctx)
+		writeImage(w.network, "PNG", w.pngObject, adsImage, w.ctx)
+		writeImage(w.network, "2xPNG", w.png2XObject, adsImage2X, w.ctx)
+	}
+}
 
-		log.Printf("%s: Writing JSON", w.name)
-		jsonW := w.jsonObject.NewWriter(w.ctx)
-		_, err = jsonW.Write(json)
-		if err != nil {
-			log.Errorf("%s: Couldn't write json: %v", w.name, err)
-		}
-		err = jsonW.Close()
-		if err != nil {
-			log.Errorf("%s: Couldn't close JSON writer: %v", w.name, err)
-		}
+func writeData(network string, objectName string, object *storage.ObjectHandle, data []byte, ctx context.Context) {
+	log.Printf("%s: Writing %s", network, objectName)
+	w := object.NewWriter(ctx)
+	if _, err := w.Write(data); err != nil {
+		log.Errorf("%s: Couldn't write %s: %v", network, objectName, err)
+	}
 
-		log.Printf("%s: Writing PNG", w.name)
-		pngW := w.pngObject.NewWriter(w.ctx)
-		err = png.Encode(pngW, adsImage)
-		if err != nil {
-			log.Errorf("%s: Couldn't write PNG: %v", w.name, err)
-		}
-		err = pngW.Close()
-		if err != nil {
-			log.Errorf("%s: Couldn't close PNG writer: %v", w.name, err)
-		}
+	if err := w.Close(); err != nil {
+		log.Errorf("%s: Couldn't close %s writer: %v", network, objectName, err)
+	}
 
-		log.Printf("%s: Writing 2x PNG", w.name)
-		png2XW := w.png2XObject.NewWriter(w.ctx)
-		err = png.Encode(png2XW, adsImage2X)
-		if err != nil {
-			log.Errorf("%s: Couldn't write 2x PNG: %v", w.name, err)
-		}
-		err = png2XW.Close()
-		if err != nil {
-			log.Errorf("%s: Couldn't close 2x PNG: %v", w.name, err)
-		}
+	log.Printf("%s: Setting ACL to public for %s", network, objectName)
+	if err := object.ACL().Set(ctx, storage.AllUsers, storage.RoleReader); err != nil {
+		log.Errorf("%s: Couldn't set %s ACL: %v", network, objectName, err)
+	}
 
-		// Set ACLs to public
-		log.Printf("%s: Setting ACLs to public", w.name)
-		err = w.jsonObject.ACL().Set(w.ctx, storage.AllUsers, storage.RoleReader)
-		if err != nil {
-			log.Errorf("%s: Couldn't set JSON ACL: %v", w.name, err)
-		}
-		err = w.pngObject.ACL().Set(w.ctx, storage.AllUsers, storage.RoleReader)
-		if err != nil {
-			log.Errorf("%s: Couldn't set PNG ACL: %v", w.name, err)
-		}
-		err = w.png2XObject.ACL().Set(w.ctx, storage.AllUsers, storage.RoleReader)
-		if err != nil {
-			log.Errorf("%s: Couldn't set 2x PNG ACL: %v", w.name, err)
-		}
+	log.Printf("%s: Lowering cache time for %s", network, objectName)
+	if _, err := object.Update(ctx, storage.ObjectAttrsToUpdate{CacheControl: "public, max-age=600"}); err != nil {
+		log.Errorf("%s: Couldn't set %s cache time: %v", network, objectName, err)
+	}
+}
 
-		// Lower the cache times
-		log.Printf("%s: Lowering cache times", w.name)
-		_, err = w.jsonObject.Update(w.ctx, storage.ObjectAttrsToUpdate{CacheControl: "public, max-age=600"})
-		if err != nil {
-			log.Errorf("%s: Couldn't set JSON cache time: %v", w.name, err)
-		}
-		_, err = w.pngObject.Update(w.ctx, storage.ObjectAttrsToUpdate{CacheControl: "public, max-age=600"})
-		if err != nil {
-			log.Errorf("%s: Couldn't set PNG cache time: %v", w.name, err)
-		}
-		_, err = w.png2XObject.Update(w.ctx, storage.ObjectAttrsToUpdate{CacheControl: "public, max-age=600"})
-		if err != nil {
-			log.Errorf("%s: Couldn't set 2x PNG cache time: %v", w.name, err)
-		}
+func writeImage(network string, objectName string, object *storage.ObjectHandle, img *image.RGBA, ctx context.Context) {
+	log.Printf("%s: Writing %s", network, objectName)
+	w := object.NewWriter(ctx)
+	if err := png.Encode(w, img); err != nil {
+		log.Errorf("%s: Couldn't write %s: %v", network, objectName, err)
+	}
 
+	if err := w.Close(); err != nil {
+		log.Errorf("%s: Couldn't close %s writer: %v", network, objectName, err)
+	}
+
+	log.Printf("%s: Setting ACL to public for %s", network, objectName)
+	if err := object.ACL().Set(ctx, storage.AllUsers, storage.RoleReader); err != nil {
+		log.Errorf("%s: Couldn't set %s ACL: %v", network, objectName, err)
+	}
+
+	log.Printf("%s: Lowering cache time for %s", network, objectName)
+	if _, err := object.Update(ctx, storage.ObjectAttrsToUpdate{CacheControl: "public, max-age=600"}); err != nil {
+		log.Errorf("%s: Couldn't set %s cache time: %v", network, objectName, err)
 	}
 }
 
