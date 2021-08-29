@@ -56,7 +56,7 @@ type KetherData struct {
 type KetherWatcher struct {
 	network     string
 	ctx         context.Context
-	session     *KetherHomepageSession
+	session     *KetherHomepageV2Session
 	jsonObject  *storage.ObjectHandle
 	pngObject   *storage.ObjectHandle
 	png2XObject *storage.ObjectHandle
@@ -69,12 +69,12 @@ func NewKetherWatcher(network string, rpcUrl string, contractAddr string, bucket
 		return nil, err
 	}
 
-	contract, err := NewKetherHomepage(common.HexToAddress(contractAddr), conn)
+	contract, err := NewKetherHomepageV2(common.HexToAddress(contractAddr), conn)
 	if err != nil {
 		return nil, err
 	}
 
-	session := &KetherHomepageSession{
+	session := &KetherHomepageV2Session{
 		Contract: contract,
 		CallOpts: bind.CallOpts{
 			Pending: true,
@@ -83,7 +83,7 @@ func NewKetherWatcher(network string, rpcUrl string, contractAddr string, bucket
 			// We're not setting From and Signer addresses here since we don't intend to transact
 			//From:     nil,
 			//Signer:   nil,
-			GasLimit: big.NewInt(3141592),
+			GasLimit: 3141592,
 		},
 	}
 
@@ -158,10 +158,10 @@ func (w *KetherWatcher) Watch(duration time.Duration) {
 
 			if adData.Image == "" {
 				imageSize = 0
-				drawAd(adsImage, adsImage2X, nil, x, y, width, height, drawNSFW)
+				drawAd(adsImage, adsImage2X, adData.Owner, nil, x, y, width, height, drawNSFW)
 			} else {
 				img, imageSize, err = getImage(adData.Image)
-				drawAd(adsImage, adsImage2X, img, x, y, width, height, drawNSFW)
+				drawAd(adsImage, adsImage2X, adData.Owner, img, x, y, width, height, drawNSFW)
 			}
 
 			ad := Ad{
@@ -245,7 +245,7 @@ func writeImage(network string, objectName string, object *storage.ObjectHandle,
 	}
 }
 
-func drawAd(img *image.RGBA, img2X *image.RGBA, adImage image.Image, adX int, adY int, adWidth int, adHeight int, nsfw bool) {
+func drawAd(img *image.RGBA, img2X *image.RGBA, owner common.Address, adImage image.Image, adX int, adY int, adWidth int, adHeight int, nsfw bool) {
 	cellWidth := 10
 	x := adX * cellWidth
 	y := adY * cellWidth
@@ -256,8 +256,8 @@ func drawAd(img *image.RGBA, img2X *image.RGBA, adImage image.Image, adX int, ad
 	adBounds2X := image.Rect(x*2, y*2, (x+width)*2, (y+height)*2)
 
 	if adImage == nil {
-		draw.Draw(img, adBounds, &image.Uniform{defaultEmptyColor}, image.ZP, draw.Over)
-		draw.Draw(img2X, adBounds2X, &image.Uniform{defaultEmptyColor}, image.ZP, draw.Over)
+		draw.Draw(img, adBounds, &image.Uniform{addressToColor(owner)}, image.ZP, draw.Over)
+		draw.Draw(img2X, adBounds2X, &image.Uniform{addressToColor(owner)}, image.ZP, draw.Over)
 	} else if nsfw {
 		draw.Draw(img, adBounds, &image.Uniform{defaultNSFWColor}, image.ZP, draw.Over)
 		draw.Draw(img2X, adBounds2X, &image.Uniform{defaultNSFWColor}, image.ZP, draw.Over)
@@ -271,10 +271,24 @@ func drawAd(img *image.RGBA, img2X *image.RGBA, adImage image.Image, adX int, ad
 	}
 }
 
+func addressToColor(address common.Address) color.RGBA {
+	b := address.Bytes()
+	b = b[len(b)-3:]
+	return color.RGBA{
+		R: b[0],
+		G: b[1],
+		B: b[2],
+		A: 0xcc,
+	}
+}
+
 func getImage(imageUrl string) (image.Image, int, error) {
 	u, err := url.Parse(imageUrl)
 	if err != nil {
 		return nil, 0, err
+	}
+	http := http.Client{
+		Timeout: 5 * time.Second,
 	}
 	if u.Scheme == "http" || u.Scheme == "https" {
 		resp, err := http.Get(imageUrl)
@@ -316,7 +330,7 @@ func getImage(imageUrl string) (image.Image, int, error) {
 
 		adImage, _, err := image.Decode(resp.Body)
 		size := int(resp.ContentLength)
-
+		// TODO: sometimes people paste their own gateways/pinned ipfs urls, parse these out and use working ones.
 		return adImage, size, err
 	} else {
 		return nil, 0, fmt.Errorf("Couldn't parse image URL: %s", imageUrl)
