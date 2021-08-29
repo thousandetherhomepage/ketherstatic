@@ -56,7 +56,7 @@ type KetherData struct {
 type KetherWatcher struct {
 	network     string
 	ctx         context.Context
-	session     *KetherHomepageSession
+	session     *KetherHomepageV2Session
 	jsonObject  *storage.ObjectHandle
 	pngObject   *storage.ObjectHandle
 	png2XObject *storage.ObjectHandle
@@ -69,12 +69,12 @@ func NewKetherWatcher(network string, rpcUrl string, contractAddr string, bucket
 		return nil, err
 	}
 
-	contract, err := NewKetherHomepage(common.HexToAddress(contractAddr), conn)
+	contract, err := NewKetherHomepageV2(common.HexToAddress(contractAddr), conn)
 	if err != nil {
 		return nil, err
 	}
 
-	session := &KetherHomepageSession{
+	session := &KetherHomepageV2Session{
 		Contract: contract,
 		CallOpts: bind.CallOpts{
 			Pending: true,
@@ -83,7 +83,7 @@ func NewKetherWatcher(network string, rpcUrl string, contractAddr string, bucket
 			// We're not setting From and Signer addresses here since we don't intend to transact
 			//From:     nil,
 			//Signer:   nil,
-			GasLimit: big.NewInt(3141592),
+			GasLimit: 3141592,
 		},
 	}
 
@@ -316,7 +316,7 @@ func getImage(imageUrl string) (image.Image, int, error) {
 
 		adImage, _, err := image.Decode(resp.Body)
 		size := int(resp.ContentLength)
-
+		// TODO: sometimes people paste their own gateways/pinned ipfs urls, parse these out and use working ones.
 		return adImage, size, err
 	} else {
 		return nil, 0, fmt.Errorf("Couldn't parse image URL: %s", imageUrl)
